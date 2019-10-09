@@ -166,6 +166,10 @@ module.exports = async (opts) => {
   width = width | 0
   height = height | 0
 
+  // rendererSettings processing
+  const speed = rendererSettings.speed || 1;
+  rendererSettings.speed = undefined;
+  
   const html = `
 <html>
 <head>
@@ -219,6 +223,7 @@ ${inject.body || ''}
       animationData
     })
 
+    animation.setSpeed(${speed})
     duration = animation.getDuration()
     numFrames = animation.getDuration(true)
 
