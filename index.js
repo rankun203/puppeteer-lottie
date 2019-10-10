@@ -167,9 +167,9 @@ module.exports = async (opts) => {
   height = height | 0
 
   // rendererSettings processing
-  const speed = rendererSettings.speed || 1;
-  rendererSettings.speed = undefined;
-  
+  const fpsScale = rendererSettings.fpsScale || 1;
+  rendererSettings.fpsScale = undefined;
+
   const html = `
 <html>
 <head>
@@ -223,7 +223,6 @@ ${inject.body || ''}
       animationData
     })
 
-    animation.setSpeed(${speed})
     duration = animation.getDuration()
     numFrames = animation.getDuration(true)
 
@@ -267,6 +266,13 @@ ${inject.body || ''}
   const pageFrame = page.mainFrame()
   const rootHandle = await pageFrame.$('#root')
 
+  // Total frames / frames to delete (total frames - target frames)
+  let targetFps = Math.round((numFrames / duration) * fpsScale);
+  // Don't make it too small
+  if(targetFps < 20) {
+    targetFps = fps;
+  }
+
   const screenshotOpts = {
     omitBackground: true,
     type: frameType,
@@ -302,7 +308,7 @@ ${inject.body || ''}
         '-stats',
         '-hide_banner',
         '-y',
-        '-f', 'image2pipe', '-c:v', 'png', '-r', fps, '-i', '-',
+        '-f', 'image2pipe', '-c:v', 'png', '-r', targetFps, '-i', '-',
         '-vf', scale,
         '-c:v', 'libx264',
         '-profile:v', ffmpegOptions.profileVideo,
@@ -341,7 +347,10 @@ ${inject.body || ''}
     })
   }
 
+  const deleteStep = Math.round(numFrames / (numFrames - numFrames * (targetFps / fps)));
   for (let frame = 1; frame <= numFrames; ++frame) {
+    if (frame % deleteStep === 0) continue;
+
     const frameOutputPath = isMultiFrame
       ? sprintf(tempOutput, frame)
       : tempOutput
@@ -393,7 +402,7 @@ ${inject.body || ''}
 
     const params = [
       '-o', escapePath(output),
-      '--fps', gifskiOptions.fps || fps,
+      '--fps', gifskiOptions.fps || targetFps,
       gifskiOptions.fast && '--fast',
       '--quality', gifskiOptions.quality,
       '--quiet',
