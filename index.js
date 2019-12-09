@@ -247,176 +247,184 @@ ${inject.body || ''}
     ...puppeteerOptions
   })
   const page = await browser.newPage()
+  let duration;
+  let numFrames;
+  try {
+    // Inside page, try start
+    if (!quiet) {
+      page.on('console', console.log.bind(console))
+      page.on('error', console.error.bind(console))
+    }
 
-  if (!quiet) {
-    page.on('console', console.log.bind(console))
-    page.on('error', console.error.bind(console))
-  }
+    await page.setViewport({
+      deviceScaleFactor,
+      width,
+      height
+    })
+    await page.setContent(html)
+    await page.waitForSelector('.ready')
+    duration = await page.evaluate(() => duration)
+    numFrames = await page.evaluate(() => numFrames)
 
-  await page.setViewport({
-    deviceScaleFactor,
-    width,
-    height
-  })
-  await page.setContent(html)
-  await page.waitForSelector('.ready')
-  const duration = await page.evaluate(() => duration)
-  const numFrames = await page.evaluate(() => numFrames)
+    const pageFrame = page.mainFrame()
+    const rootHandle = await pageFrame.$('#root')
 
-  const pageFrame = page.mainFrame()
-  const rootHandle = await pageFrame.$('#root')
+    // Total frames / frames to delete (total frames - target frames)
+    let targetFps = Math.round((numFrames / duration) * fpsScale);
+    // Don't make it too small
+    if(targetFps < 20) {
+      targetFps = fps;
+    }
 
-  // Total frames / frames to delete (total frames - target frames)
-  let targetFps = Math.round((numFrames / duration) * fpsScale);
-  // Don't make it too small
-  if(targetFps < 20) {
-    targetFps = fps;
-  }
+    const screenshotOpts = {
+      omitBackground: true,
+      type: frameType,
+      quality: frameType === 'jpeg' ? jpegQuality : undefined
+    }
 
-  const screenshotOpts = {
-    omitBackground: true,
-    type: frameType,
-    quality: frameType === 'jpeg' ? jpegQuality : undefined
-  }
+    if (spinnerB) {
+      spinnerB.succeed()
+    }
 
-  if (spinnerB) {
-    spinnerB.succeed()
-  }
+    const numOutputFrames = isMultiFrame ? numFrames : 1
+    const framesLabel = pluralize('frame', numOutputFrames)
+    const spinnerR = !quiet && ora(`Rendering ${numOutputFrames} ${framesLabel}`).start()
 
-  const numOutputFrames = isMultiFrame ? numFrames : 1
-  const framesLabel = pluralize('frame', numOutputFrames)
-  const spinnerR = !quiet && ora(`Rendering ${numOutputFrames} ${framesLabel}`).start()
+    let ffmpegP
+    let ffmpeg
+    let ffmpegStdin
 
-  let ffmpegP
-  let ffmpeg
-  let ffmpegStdin
+    if (isMp4) {
+      ffmpegP = new Promise((resolve, reject) => {
+        let scale = `scale=${width}:-2`
 
-  if (isMp4) {
-    ffmpegP = new Promise((resolve, reject) => {
-      let scale = `scale=${width}:-2`
-
-      if (width % 2 !== 0) {
-        if (height % 2 === 0) {
-          scale = `scale=-2:${height}`
-        } else {
-          scale = `scale=${width + 1}:-2`
+        if (width % 2 !== 0) {
+          if (height % 2 === 0) {
+            scale = `scale=-2:${height}`
+          } else {
+            scale = `scale=${width + 1}:-2`
+          }
         }
-      }
 
-      const ffmpegArgs = [
-        '-v', 'error',
-        '-stats',
-        '-hide_banner',
-        '-y',
-        '-f', 'image2pipe', '-c:v', 'png', '-r', targetFps, '-i', '-',
-        '-vf', scale,
-        '-c:v', 'libx264',
-        '-profile:v', ffmpegOptions.profileVideo,
-        '-preset', ffmpegOptions.preset,
-        '-crf', ffmpegOptions.crf,
-        '-movflags', 'faststart',
-        '-pix_fmt', 'yuv420p',
-        '-an', output
-      ]
+        const ffmpegArgs = [
+          '-v', 'error',
+          '-stats',
+          '-hide_banner',
+          '-y',
+          '-f', 'image2pipe', '-c:v', 'png', '-r', targetFps, '-i', '-',
+          '-vf', scale,
+          '-c:v', 'libx264',
+          '-profile:v', ffmpegOptions.profileVideo,
+          '-preset', ffmpegOptions.preset,
+          '-crf', ffmpegOptions.crf,
+          '-movflags', 'faststart',
+          '-pix_fmt', 'yuv420p',
+          '-an', output
+        ]
 
-      console.log(ffmpegArgs.join(' '))
+        console.log(ffmpegArgs.join(' '))
 
-      ffmpeg = spawn(process.env.FFMPEG_PATH || 'ffmpeg', ffmpegArgs)
-      const { stdin, stdout, stderr } = ffmpeg
+        ffmpeg = spawn(process.env.FFMPEG_PATH || 'ffmpeg', ffmpegArgs)
+        const { stdin, stdout, stderr } = ffmpeg
 
-      if (!quiet) {
-        stdout.pipe(process.stdout)
-      }
-      stderr.pipe(process.stderr)
-
-      stdin.on('error', (err) => {
-        if (err.code !== 'EPIPE') {
-          return reject(err)
+        if (!quiet) {
+          stdout.pipe(process.stdout)
         }
+        stderr.pipe(process.stderr)
+
+        stdin.on('error', (err) => {
+          if (err.code !== 'EPIPE') {
+            return reject(err)
+          }
+        })
+
+        ffmpeg.on('exit', async (status) => {
+          if (status) {
+            return reject(new Error(`FFmpeg exited with status ${status}`))
+          } else {
+            return resolve()
+          }
+        })
+
+        ffmpegStdin = stdin
+      })
+    }
+
+    const deleteStep = Math.round(numFrames / (numFrames - numFrames * (targetFps / fps)));
+    for (let frame = 1; frame <= numFrames; ++frame) {
+      if (frame % deleteStep === 0) continue;
+
+      const frameOutputPath = isMultiFrame
+        ? sprintf(tempOutput, frame)
+        : tempOutput
+
+      // eslint-disable-next-line no-undef
+      await page.evaluate((frame) => animation.goToAndStop(frame, true), frame)
+      const screenshot = await rootHandle.screenshot({
+        path: isMp4 ? undefined : frameOutputPath,
+        ...screenshotOpts
       })
 
-      ffmpeg.on('exit', async (status) => {
-        if (status) {
-          return reject(new Error(`FFmpeg exited with status ${status}`))
-        } else {
-          return resolve()
+      // single screenshot
+      if (!isMultiFrame) {
+        break
+      }
+
+      if (isMp4) {
+        if (ffmpegStdin.writable) {
+          ffmpegStdin.write(screenshot)
         }
-      })
+      }
+    }
 
-      ffmpegStdin = stdin
-    })
-  }
+    await rootHandle.dispose()
+    if (opts.browser) {
+      await page.close()
+    } else {
+      await browser.close()
+    }
 
-  const deleteStep = Math.round(numFrames / (numFrames - numFrames * (targetFps / fps)));
-  for (let frame = 1; frame <= numFrames; ++frame) {
-    if (frame % deleteStep === 0) continue;
-
-    const frameOutputPath = isMultiFrame
-      ? sprintf(tempOutput, frame)
-      : tempOutput
-
-    // eslint-disable-next-line no-undef
-    await page.evaluate((frame) => animation.goToAndStop(frame, true), frame)
-    const screenshot = await rootHandle.screenshot({
-      path: isMp4 ? undefined : frameOutputPath,
-      ...screenshotOpts
-    })
-
-    // single screenshot
-    if (!isMultiFrame) {
-      break
+    if (spinnerR) {
+      spinnerR.succeed()
     }
 
     if (isMp4) {
-      if (ffmpegStdin.writable) {
-        ffmpegStdin.write(screenshot)
+      const spinnerF = !quiet && ora(`Generating mp4 with FFmpeg`).start()
+
+      ffmpegStdin.end()
+      await ffmpegP
+
+      if (spinnerF) {
+        spinnerF.succeed()
+      }
+    } else if (isGif) {
+      const spinnerG = !quiet && ora(`Generating GIF with Gifski`).start()
+
+      const framePattern = tempOutput.replace('%012d', '*')
+      const escapePath = arg => arg.replace(/(\s+)/g, '\\$1')
+
+      const params = [
+        '-o', escapePath(output),
+        '--fps', gifskiOptions.fps || targetFps,
+        gifskiOptions.fast && '--fast',
+        '--quality', gifskiOptions.quality,
+        '--quiet',
+        escapePath(framePattern)
+      ].filter(Boolean)
+
+      const executable = process.env.GIFSKI_PATH || 'gifski'
+      const cmd = [ executable ].concat(params).join(' ')
+
+      await execa.shell(cmd)
+
+      if (spinnerG) {
+        spinnerG.succeed()
       }
     }
-  }
-
-  await rootHandle.dispose()
-  if (opts.browser) {
-    await page.close()
-  } else {
-    await browser.close()
-  }
-
-  if (spinnerR) {
-    spinnerR.succeed()
-  }
-
-  if (isMp4) {
-    const spinnerF = !quiet && ora(`Generating mp4 with FFmpeg`).start()
-
-    ffmpegStdin.end()
-    await ffmpegP
-
-    if (spinnerF) {
-      spinnerF.succeed()
-    }
-  } else if (isGif) {
-    const spinnerG = !quiet && ora(`Generating GIF with Gifski`).start()
-
-    const framePattern = tempOutput.replace('%012d', '*')
-    const escapePath = arg => arg.replace(/(\s+)/g, '\\$1')
-
-    const params = [
-      '-o', escapePath(output),
-      '--fps', gifskiOptions.fps || targetFps,
-      gifskiOptions.fast && '--fast',
-      '--quality', gifskiOptions.quality,
-      '--quiet',
-      escapePath(framePattern)
-    ].filter(Boolean)
-
-    const executable = process.env.GIFSKI_PATH || 'gifski'
-    const cmd = [ executable ].concat(params).join(' ')
-
-    await execa.shell(cmd)
-
-    if (spinnerG) {
-      spinnerG.succeed()
-    }
+    // Inside page, try ended
+  } catch (err) {
+    await page.close();
+    throw err;
   }
 
   if (tempDir) {
