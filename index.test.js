@@ -12,9 +12,9 @@ const renderLottie = require('.')
 
 const bodymovin = 'fixtures/bodymovin.json'
 
-test.only('flawless tgs to gif', async (t) => {
-  const output = tempy.file({ extension: 'png' })
-  const fixtureJson = 'fixtures/neutral_face_5ac984f4.tgs.json'
+test.only('flawless tgs to gif sticker', async (t) => {
+  const fixtureJson = 'fixtures/neutral.json'
+  const output = fixtureJson + '.gif'
 
   await renderLottie({
     path: fixtureJson,
