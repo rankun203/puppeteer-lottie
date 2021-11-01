@@ -8,7 +8,8 @@
   "license": "MIT",
   "scripts": {
     "docs": "npx update-markdown-jsdoc --no-markdown-toc",
-    "test": "ava -v && standard *.js"
+    "test": "ava -v",
+    "lint": "standard *.js"
   },
   "engines": {
     "node": ">=8"
