@@ -12,6 +12,25 @@ const renderLottie = require('.')
 
 const bodymovin = 'fixtures/bodymovin.json'
 
+test.only('flawless tgs to gif', async (t) => {
+  const output = tempy.file({ extension: 'png' })
+  const fixtureJson = 'fixtures/neutral_face_5ac984f4.tgs.json'
+
+  await renderLottie({
+    path: fixtureJson,
+    output,
+    width: 240,
+    rendererSettings: {
+      fpsScale: 0.5
+    }
+  })
+  const image = await sharp(output).metadata()
+  t.is(image.width, 240)
+  t.is(image.height, 240)
+
+  await fs.remove(output)
+})
+
 test('bodymovin.json => single frame png', async (t) => {
   const output = tempy.file({ extension: 'png' })
 
@@ -93,7 +112,7 @@ if (!process.env.CI) {
   })
 }
 
-test.only('bodymovin.json => mp4', async (t) => {
+test('bodymovin.json => mp4', async (t) => {
   const output = tempy.file({ extension: 'mp4' })
 
   await renderLottie({

@@ -13,7 +13,10 @@ const { sprintf } = require('sprintf-js')
 
 const { cssifyObject } = require('css-in-js-utils')
 
-const lottieScript = fs.readFileSync(path.join(__dirname, 'lib', 'lottie.min.js'), 'utf8')
+const lottieScript = fs.readFileSync(
+  path.join(__dirname, 'lib', 'lottie.min.js'),
+  'utf8'
+)
 
 const injectLottie = `
 <script>
@@ -66,10 +69,10 @@ module.exports = async (opts) => {
     quiet = false,
     deviceScaleFactor = 1,
     renderer = 'svg',
-    rendererSettings = { },
-    style = { },
-    inject = { },
-    puppeteerOptions = { },
+    rendererSettings = {},
+    style = {},
+    inject = {},
+    puppeteerOptions = {},
     ffmpegOptions = {
       crf: 20,
       profileVideo: 'main',
@@ -81,51 +84,57 @@ module.exports = async (opts) => {
     }
   } = opts
 
-  let {
-    width = undefined,
-    height = undefined
-  } = opts
+  let { width = undefined, height = undefined } = opts
 
   ow(output, ow.string.nonEmpty, 'output')
   ow(deviceScaleFactor, ow.number.integer.positive, 'deviceScaleFactor')
-  ow(renderer, ow.string.oneOf([ 'svg', 'canvas', 'html' ], 'renderer'))
+  ow(renderer, ow.string.oneOf(['svg', 'canvas', 'html'], 'renderer'))
   ow(rendererSettings, ow.object.plain, 'rendererSettings')
   ow(puppeteerOptions, ow.object.plain, 'puppeteerOptions')
-  ow(ffmpegOptions, ow.object.exactShape({
-    crf: ow.number.is((val) => {
-      return val >= 0 && val <= 51
-    }),
-    profileVideo: ow.string.oneOf(['baseline', 'main', 'high', 'high10', 'high422', 'high444']),
-    preset: ow.string.oneOf([
-      'ultrafast',
-      'superfast',
-      'veryfast',
-      'faster',
-      'fast',
-      'medium',
-      'slow',
-      'slower',
-      'veryslow',
-      'placebo'])
-  }))
+  ow(
+    ffmpegOptions,
+    ow.object.exactShape({
+      crf: ow.number.is((val) => {
+        return val >= 0 && val <= 51
+      }),
+      profileVideo: ow.string.oneOf([
+        'baseline',
+        'main',
+        'high',
+        'high10',
+        'high422',
+        'high444'
+      ]),
+      preset: ow.string.oneOf([
+        'ultrafast',
+        'superfast',
+        'veryfast',
+        'faster',
+        'fast',
+        'medium',
+        'slow',
+        'slower',
+        'veryslow',
+        'placebo'
+      ])
+    })
+  )
   ow(style, ow.object.plain, 'style')
   ow(inject, ow.object.plain, 'inject')
 
   const ext = path.extname(output).slice(1).toLowerCase()
-  const isGif = (ext === 'gif')
-  const isMp4 = (ext === 'mp4')
-  const isPng = (ext === 'png')
-  const isJpg = (ext === 'jpg' || ext === 'jpeg')
+  const isGif = ext === 'gif'
+  const isMp4 = ext === 'mp4'
+  const isPng = ext === 'png'
+  const isJpg = ext === 'jpg' || ext === 'jpeg'
 
   if (!(isGif || isMp4 || isPng || isJpg)) {
     throw new Error(`Unsupported output format "${output}"`)
   }
 
   const tempDir = isGif ? tempy.directory() : undefined
-  const tempOutput = isGif
-    ? path.join(tempDir, 'frame-%012d.png')
-    : output
-  const frameType = (isJpg ? 'jpeg' : 'png')
+  const tempOutput = isGif ? path.join(tempDir, 'frame-%012d.png') : output
+  const frameType = isJpg ? 'jpeg' : 'png'
   const isMultiFrame = isMp4 || /%d|%\d{2,3}d/.test(tempOutput)
 
   let lottieData = animationData
@@ -167,8 +176,8 @@ module.exports = async (opts) => {
   height = height | 0
 
   // rendererSettings processing
-  const fpsScale = rendererSettings.fpsScale || 1;
-  rendererSettings.fpsScale = undefined;
+  const fpsScale = rendererSettings.fpsScale || 1
+  rendererSettings.fpsScale = undefined
 
   const html = `
 <html>
@@ -243,12 +252,14 @@ ${inject.body || ''}
 
   const spinnerB = !quiet && ora('Loading browser').start()
 
-  const browser = opts.browser || await puppeteer.launch({
-    ...puppeteerOptions
-  })
+  const browser =
+    opts.browser ||
+    (await puppeteer.launch({
+      ...puppeteerOptions
+    }))
   const page = await browser.newPage()
-  let duration;
-  let numFrames;
+  let duration
+  let numFrames
   try {
     // Inside page, try start
     if (!quiet) {
@@ -270,10 +281,10 @@ ${inject.body || ''}
     const rootHandle = await pageFrame.$('#root')
 
     // Total frames / frames to delete (total frames - target frames)
-    let targetFps = Math.round((numFrames / duration) * fpsScale);
+    let targetFps = Math.round((numFrames / duration) * fpsScale)
     // Don't make it too small
-    if(targetFps < 20) {
-      targetFps = fps;
+    if (targetFps < 20) {
+      targetFps = fps
     }
 
     const screenshotOpts = {
@@ -288,7 +299,8 @@ ${inject.body || ''}
 
     const numOutputFrames = isMultiFrame ? numFrames : 1
     const framesLabel = pluralize('frame', numOutputFrames)
-    const spinnerR = !quiet && ora(`Rendering ${numOutputFrames} ${framesLabel}`).start()
+    const spinnerR =
+      !quiet && ora(`Rendering ${numOutputFrames} ${framesLabel}`).start()
 
     let ffmpegP
     let ffmpeg
@@ -307,19 +319,35 @@ ${inject.body || ''}
         }
 
         const ffmpegArgs = [
-          '-v', 'error',
+          '-v',
+          'error',
           '-stats',
           '-hide_banner',
           '-y',
-          '-f', 'image2pipe', '-c:v', 'png', '-r', targetFps, '-i', '-',
-          '-vf', scale,
-          '-c:v', 'libx264',
-          '-profile:v', ffmpegOptions.profileVideo,
-          '-preset', ffmpegOptions.preset,
-          '-crf', ffmpegOptions.crf,
-          '-movflags', 'faststart',
-          '-pix_fmt', 'yuv420p',
-          '-an', output
+          '-f',
+          'image2pipe',
+          '-c:v',
+          'png',
+          '-r',
+          targetFps,
+          '-i',
+          '-',
+          '-vf',
+          scale,
+          '-c:v',
+          'libx264',
+          '-profile:v',
+          ffmpegOptions.profileVideo,
+          '-preset',
+          ffmpegOptions.preset,
+          '-crf',
+          ffmpegOptions.crf,
+          '-movflags',
+          'faststart',
+          '-pix_fmt',
+          'yuv420p',
+          '-an',
+          output
         ]
 
         console.log(ffmpegArgs.join(' '))
@@ -350,9 +378,11 @@ ${inject.body || ''}
       })
     }
 
-    const deleteStep = Math.round(numFrames / (numFrames - numFrames * (targetFps / fps)));
+    const deleteStep = Math.round(
+      numFrames / (numFrames - numFrames * (targetFps / fps))
+    )
     for (let frame = 1; frame <= numFrames; ++frame) {
-      if (frame % deleteStep === 0) continue;
+      if (frame % deleteStep === 0) continue
 
       const frameOutputPath = isMultiFrame
         ? sprintf(tempOutput, frame)
@@ -401,19 +431,22 @@ ${inject.body || ''}
       const spinnerG = !quiet && ora(`Generating GIF with Gifski`).start()
 
       const framePattern = tempOutput.replace('%012d', '*')
-      const escapePath = arg => arg.replace(/(\s+)/g, '\\$1')
+      const escapePath = (arg) => arg.replace(/(\s+)/g, '\\$1')
 
       const params = [
-        '-o', escapePath(output),
-        '--fps', gifskiOptions.fps || targetFps,
+        '-o',
+        escapePath(output),
+        '--fps',
+        gifskiOptions.fps || targetFps,
         gifskiOptions.fast && '--fast',
-        '--quality', gifskiOptions.quality,
+        '--quality',
+        gifskiOptions.quality,
         '--quiet',
         escapePath(framePattern)
       ].filter(Boolean)
 
       const executable = process.env.GIFSKI_PATH || 'gifski'
-      const cmd = [ executable ].concat(params).join(' ')
+      const cmd = [executable].concat(params).join(' ')
 
       await execa.shell(cmd)
 
@@ -423,8 +456,8 @@ ${inject.body || ''}
     }
     // Inside page, try ended
   } catch (err) {
-    await page.close();
-    throw err;
+    await page.close()
+    throw err
   }
 
   if (tempDir) {
