@@ -154,6 +154,7 @@ module.exports = async (opts) => {
   }
 
   const fps = ~~lottieData.fr
+  const nm = ~~lottieData.nm
   const { w = 640, h = 480 } = lottieData
   const aR = w / h
 
@@ -276,12 +277,13 @@ ${inject.body || ''}
     await page.waitForSelector('.ready')
     duration = await page.evaluate(() => duration)
     numFrames = await page.evaluate(() => numFrames)
+    // numFrames might have some flashing bug when is 91 frames
+    if (numFrames % 2 === 1) --numFrames
 
     const pageFrame = page.mainFrame()
     const rootHandle = await pageFrame.$('#root')
 
-    // Total frames / frames to delete (total frames - target frames)
-    let targetFps = Math.round((numFrames / duration) * fpsScale)
+    let targetFps = Math.floor(fps * fpsScale)
     // Don't make it too small
     if (targetFps < 20) {
       targetFps = fps
@@ -466,6 +468,7 @@ ${inject.body || ''}
 
   return {
     numFrames,
-    duration
+    duration,
+    name: nm
   }
 }
