@@ -435,19 +435,23 @@ ${inject.body || ''}
       const framePattern = tempOutput.replace('%012d', '*')
       const escapePath = (arg) => arg.replace(/(\s+)/g, '\\$1')
 
+      const framesSoftOutput = tempOutput.replace('frame-', 'frame-soft-')
+      const framesSoftOutputAsInput = framePattern.replace(
+        'frame-',
+        'frame-soft-'
+      )
       // convert: soften edges by removing semi-transparent pixels that's too transparent < 80% opaque
-      await execa(
-        process.env.CONVERT_PATH || 'convert',
+      await execa.shell(
         [
-          framePattern,
+          process.env.CONVERT_PATH || 'convert',
+          escapePath(framePattern),
           '-channel',
           'alpha',
           '-threshold',
           '80%',
           '+channel',
-          'soft-' + tempOutput
-        ],
-        { shell: true, cwd: this.tmpDir }
+          framesSoftOutput
+        ].join(' ')
       )
 
       const params = [
@@ -459,7 +463,7 @@ ${inject.body || ''}
         '--quality',
         gifskiOptions.quality,
         '--quiet',
-        escapePath('soft-' + framePattern)
+        escapePath(framesSoftOutputAsInput)
       ].filter(Boolean)
 
       const executable = process.env.GIFSKI_PATH || 'gifski'
@@ -473,6 +477,7 @@ ${inject.body || ''}
     }
     // Inside page, try ended
   } catch (err) {
+    console.error('processing failed', err)
     await page.close()
     throw err
   }
