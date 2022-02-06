@@ -435,6 +435,21 @@ ${inject.body || ''}
       const framePattern = tempOutput.replace('%012d', '*')
       const escapePath = (arg) => arg.replace(/(\s+)/g, '\\$1')
 
+      // convert: soften edges by removing semi-transparent pixels that's too transparent < 80% opaque
+      await execa(
+        process.env.CONVERT_PATH || 'convert',
+        [
+          framePattern,
+          '-channel',
+          'alpha',
+          '-threshold',
+          '80%',
+          '+channel',
+          'soft-' + tempOutput
+        ],
+        { shell: true, cwd: this.tmpDir }
+      )
+
       const params = [
         '-o',
         escapePath(output),
@@ -444,7 +459,7 @@ ${inject.body || ''}
         '--quality',
         gifskiOptions.quality,
         '--quiet',
-        escapePath(framePattern)
+        escapePath('soft-' + framePattern)
       ].filter(Boolean)
 
       const executable = process.env.GIFSKI_PATH || 'gifski'
