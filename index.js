@@ -84,7 +84,7 @@ module.exports = async (opts) => {
     }
   } = opts
 
-  let { width = undefined, height = undefined } = opts
+  let { width = undefined, height = undefined, widthStatic = undefined } = opts
 
   ow(output, ow.string.nonEmpty, 'output')
   ow(deviceScaleFactor, ow.number.integer.positive, 'deviceScaleFactor')
@@ -164,9 +164,9 @@ module.exports = async (opts) => {
 
   if (!(width && height)) {
     if (width) {
-      height = width / aR
+      height = Math.round(width / aR)
     } else if (height) {
-      width = height * aR
+      width = Math.round(height * aR)
     } else {
       width = w
       height = h
@@ -175,6 +175,8 @@ module.exports = async (opts) => {
 
   width = width | 0
   height = height | 0
+
+  !quiet && console.log('width, height, w, h', width, height, w, h)
 
   // rendererSettings processing
   const fpsScale = rendererSettings.fpsScale || 1
@@ -197,10 +199,8 @@ module.exports = async (opts) => {
 
 body {
   background: transparent;
-
-  ${width ? 'width: ' + width + 'px;' : ''}
-  ${height ? 'height: ' + height + 'px;' : ''}
-
+  width: ${w}px;
+  height: ${h}px;
   overflow: hidden;
 }
 
@@ -257,10 +257,7 @@ ${inject.body || ''}
 
   const browser =
     opts.browser ||
-    (await puppeteer.launch({
-      headless: 'new',
-      ...puppeteerOptions
-    }))
+    (await puppeteer.launch({ headless: 'new', ...puppeteerOptions }))
   const page = await browser.newPage()
   let duration
   let firstFrame
@@ -272,11 +269,7 @@ ${inject.body || ''}
       page.on('error', console.error.bind(console))
     }
 
-    await page.setViewport({
-      deviceScaleFactor,
-      width,
-      height
-    })
+    await page.setViewport({ deviceScaleFactor, width: w, height: h })
     await page.setContent(html)
     await page.waitForSelector('.ready')
     duration = await page.evaluate(() => duration)
@@ -448,11 +441,15 @@ ${inject.body || ''}
         'frame-',
         'frame-soft-'
       )
+      const isSingle = numFrames === 1
+
       // convert: soften edges by removing semi-transparent pixels that's too transparent < 80% opaque
       await execa.shell(
         [
           process.env.CONVERT_PATH || 'convert',
           escapePath(framePattern),
+          '-resize',
+          `${isSingle ? widthStatic : width}x`,
           '-channel',
           'alpha',
           '-threshold',
@@ -470,9 +467,10 @@ ${inject.body || ''}
         gifskiOptions.fast && '--fast',
         '--quality',
         gifskiOptions.quality,
+        '--width ' + (isSingle ? widthStatic : width),
         '--quiet',
         escapePath(framesSoftOutputAsInput),
-        numFrames === 1 && escapePath(framesSoftOutputAsInput)
+        isSingle && escapePath(framesSoftOutputAsInput)
       ].filter(Boolean)
 
       const executable = process.env.GIFSKI_PATH || 'gifski'
@@ -489,6 +487,7 @@ ${inject.body || ''}
           process.env.FFMPEG_PATH || 'ffmpeg',
           '-i',
           tempOutput,
+          `-filter:v scale=${width}:${height}`,
           output
         ].join(' ')
         // just do a file conversion
