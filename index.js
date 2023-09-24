@@ -278,7 +278,7 @@ ${inject.body || ''}
     duration = await page.evaluate(() => duration)
     numFrames = await page.evaluate(() => numFrames)
     // numFrames might have some flashing bug when is 91 frames
-    if (numFrames % 2 === 1) --numFrames
+    if (numFrames % 2 === 1 && numFrames > 1) --numFrames
 
     const pageFrame = page.mainFrame()
     const rootHandle = await pageFrame.$('#root')
