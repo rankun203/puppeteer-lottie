@@ -427,8 +427,6 @@ ${inject.body || ''}
       spinnerR.succeed()
     }
 
-    !quiet && console.log('-------------6')
-
     if (isMp4) {
       const spinnerF = !quiet && ora(`Generating mp4 with FFmpeg`).start()
 
@@ -439,7 +437,6 @@ ${inject.body || ''}
         spinnerF.succeed()
       }
     } else if (isGif) {
-      !quiet && console.log('-------------4')
       const spinnerG =
         !quiet && ora(`Generating GIF with Gifski / ffmpeg`).start()
 
@@ -464,59 +461,24 @@ ${inject.body || ''}
           framesSoftOutput
         ].join(' ')
       )
-      !quiet && console.log('-------------1')
 
-      if (numFrames > 1) {
-        const params = [
-          '-o',
-          output,
-          '--fps',
-          gifskiOptions.fps || targetFps,
-          gifskiOptions.fast && '--fast',
-          '--quality',
-          gifskiOptions.quality,
-          '--quiet',
-          escapePath(framesSoftOutputAsInput)
-        ].filter(Boolean)
+      const params = [
+        '-o',
+        output,
+        '--fps',
+        gifskiOptions.fps || targetFps,
+        gifskiOptions.fast && '--fast',
+        '--quality',
+        gifskiOptions.quality,
+        '--quiet',
+        escapePath(framesSoftOutputAsInput),
+        numFrames === 1 && escapePath(framesSoftOutputAsInput)
+      ].filter(Boolean)
 
-        const executable = process.env.GIFSKI_PATH || 'gifski'
-        const cmd = [executable].concat(params).join(' ')
+      const executable = process.env.GIFSKI_PATH || 'gifski'
+      const cmd = [executable].concat(params).join(' ')
 
-        await execa.shell(cmd)
-      } else if (numFrames === 1) {
-        const ff = process.env.FFMPEG_PATH || 'ffmpeg'
-        const palette_file = path.join(tempDir, '/palette.png')
-        // 1st generate palette
-        // ffmpeg -i imgs/rankun203*.png -vf 'palettegen' palette.png
-        const cmd_generate_palette = [
-          ff,
-          '-i',
-          tempOutput,
-          '-vf',
-          'palettegen',
-          palette_file
-        ].join(' ')
-        !quiet && console.log('cmd_generate_palette', cmd_generate_palette)
-        await execa.shell(cmd_generate_palette)
-
-        // ffmpeg -i imgs/rankun203*.png -i palette.png -lavfi 'paletteuse=dither=bayer' output.gif
-        const cmd_generate_gif = [
-          ff,
-          '-i',
-          framesSoftOutput,
-          '-i',
-          palette_file,
-          '-lavfi',
-          'paletteuse=dither=bayer',
-          output
-        ].join(' ')
-        !quiet && console.log('cmd_generate_gif', cmd_generate_gif)
-        await execa.shell(cmd_generate_gif)
-      } else {
-        const msg = 'Failed to generate GIF, numFrames=' + numFrames
-        spinnerG.fail(msg)
-        throw new Error(msg)
-      }
+      await execa.shell(cmd)
 
       if (spinnerG) {
         spinnerG.succeed()
@@ -550,7 +512,7 @@ ${inject.body || ''}
 
   if (tempDir) {
     !quiet && console.log('index.js tempDir removed', tempDir)
-    await fs.remove(tempDir)
+    // await fs.remove(tempDir)
   }
 
   return {
