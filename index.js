@@ -479,7 +479,7 @@ ${inject.body || ''}
         // ffmpeg -i imgs/rankun203*.png -i palette.png -lavfi 'paletteuse=dither=bayer' output.gif
         await execa.shell([ ff, '-i', framesSoftOutput, '-i', path.join(tempDir, '/palette.png'), `"${output}"`, ].join(' '))
       } else {
-        const msg = 'Failed to generate GIF, numFrames=' = numFrames
+        const msg = 'Failed to generate GIF, numFrames=' + numFrames
         spinnerG.fail(msg)
         throw new Error(msg)
       }
