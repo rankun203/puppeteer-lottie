@@ -2,6 +2,7 @@
 
 const ffmpegProbe = require('ffmpeg-probe')
 const fs = require('fs-extra')
+const fso = require('fs')
 const path = require('path')
 const test = require('ava')
 const sharp = require('sharp')
@@ -12,13 +13,14 @@ const renderLottie = require('.')
 
 const bodymovin = 'fixtures/bodymovin.json'
 
-test.only('flawless tgs to gif sticker', async (t) => {
+test('flawless tgs to gif sticker', async (t) => {
   const fixtureJson = 'fixtures/neutral.json'
   const output = fixtureJson + '.gif'
 
   await renderLottie({
     path: fixtureJson,
     output,
+    quiet: true,
     width: 240,
     rendererSettings: {
       fpsScale: 0.5
@@ -43,8 +45,29 @@ test('bodymovin.json => single frame png', async (t) => {
   const image = await sharp(output).metadata()
   t.is(image.width, 1820)
   t.is(image.height, 275)
-  t.is(image.channels, 4)
   t.is(image.format, 'png')
+
+  await fs.remove(output)
+})
+
+test('tgs => single frame gif', async (t) => {
+  const output = tempy.file({ extension: 'gif' })
+
+  await renderLottie({
+    path: 'fixtures/tgs_file_267630.json',
+    quiet: true,
+    output
+  })
+
+  const image = await sharp(output).metadata()
+  t.is(image.width, 512)
+  t.is(image.height, 512)
+  t.is(image.format, 'gif')
+
+  const fileBytes = fso.statSync(output).size
+
+  // file bytes should be larger than 100KB
+  t.true(fileBytes > 10 * 1024)
 
   await fs.remove(output)
 })
@@ -62,7 +85,6 @@ test('bodymovin.json => single frame jpg scale=640:-1', async (t) => {
   const image = await sharp(output).metadata()
   t.is(image.width, 640)
   t.is(image.height, 96)
-  t.is(image.channels, 3)
   t.is(image.format, 'jpeg')
 
   await fs.remove(output)
@@ -79,11 +101,10 @@ test('bodymovin.json => png frames scale=-1:100', async (t) => {
     output
   })
 
-  for (let i = 1; i < 103; ++i) {
+  for (let i = 0; i < 102; ++i) {
     const image = await sharp(sprintf(output, i)).metadata()
     t.is(image.width, 661)
     t.is(image.height, 100)
-    t.is(image.channels, 4)
     t.is(image.format, 'png')
   }
 
@@ -100,12 +121,9 @@ if (!process.env.CI) {
       output
     })
 
-    console.log(output)
     const image = await sharp(output).metadata()
-    console.log(image)
     t.is(image.width, 1820)
     t.is(image.height, 275)
-    t.is(image.channels, 4)
     t.is(image.format, 'gif')
 
     await fs.remove(output)

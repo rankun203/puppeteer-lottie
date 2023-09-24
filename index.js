@@ -234,7 +234,9 @@ ${inject.body || ''}
     })
 
     duration = animation.getDuration()
-    numFrames = animation.getDuration(true)
+    firstFrame = animation.firstFrame
+    numFrames = animation.totalFrames
+    window.lottie_animation = animation
 
     var div = document.createElement('div')
     div.className = 'ready'
@@ -256,15 +258,17 @@ ${inject.body || ''}
   const browser =
     opts.browser ||
     (await puppeteer.launch({
+      headless: 'new',
       ...puppeteerOptions
     }))
   const page = await browser.newPage()
   let duration
+  let firstFrame
   let numFrames
   try {
     // Inside page, try start
     if (!quiet) {
-      page.on('console', console.log.bind(console))
+      !quiet && page.on('console', console.log.bind(console))
       page.on('error', console.error.bind(console))
     }
 
@@ -276,6 +280,7 @@ ${inject.body || ''}
     await page.setContent(html)
     await page.waitForSelector('.ready')
     duration = await page.evaluate(() => duration)
+    firstFrame = await page.evaluate(() => firstFrame)
     numFrames = await page.evaluate(() => numFrames)
     // numFrames might have some flashing bug when is 91 frames
     if (numFrames % 2 === 1 && numFrames > 1) --numFrames
@@ -349,10 +354,10 @@ ${inject.body || ''}
           '-pix_fmt',
           'yuv420p',
           '-an',
-          `"${output}"`
+          output
         ]
 
-        console.log(ffmpegArgs.join(' '))
+        !quiet && console.log('ffmpeg', ffmpegArgs.join(' '))
 
         ffmpeg = spawn(process.env.FFMPEG_PATH || 'ffmpeg', ffmpegArgs)
         const { stdin, stdout, stderr } = ffmpeg
@@ -380,11 +385,12 @@ ${inject.body || ''}
       })
     }
 
+    // for changing target fps
     const deleteStep = Math.round(
       numFrames / (numFrames - numFrames * (targetFps / fps))
     )
-    for (let frame = 1; frame <= numFrames; ++frame) {
-      if (frame % deleteStep === 0) continue
+    for (let frame = firstFrame; frame < numFrames; ++frame) {
+      if (frame > 0 && frame % deleteStep === 0) continue
 
       const frameOutputPath = isMultiFrame
         ? sprintf(tempOutput, frame)
@@ -410,6 +416,7 @@ ${inject.body || ''}
     }
 
     await rootHandle.dispose()
+
     if (opts.browser) {
       await page.close()
     } else {
@@ -419,6 +426,8 @@ ${inject.body || ''}
     if (spinnerR) {
       spinnerR.succeed()
     }
+
+    !quiet && console.log('-------------6')
 
     if (isMp4) {
       const spinnerF = !quiet && ora(`Generating mp4 with FFmpeg`).start()
@@ -430,7 +439,9 @@ ${inject.body || ''}
         spinnerF.succeed()
       }
     } else if (isGif) {
-      const spinnerG = !quiet && ora(`Generating GIF with Gifski`).start()
+      !quiet && console.log('-------------4')
+      const spinnerG =
+        !quiet && ora(`Generating GIF with Gifski / ffmpeg`).start()
 
       const framePattern = tempOutput.replace('%012d', '*')
       const escapePath = (arg) => arg.replace(/(\s+)/g, '\\$1')
@@ -453,11 +464,12 @@ ${inject.body || ''}
           framesSoftOutput
         ].join(' ')
       )
+      !quiet && console.log('-------------1')
 
       if (numFrames > 1) {
         const params = [
           '-o',
-          `"${output}"`,
+          output,
           '--fps',
           gifskiOptions.fps || targetFps,
           gifskiOptions.fast && '--fast',
@@ -473,11 +485,33 @@ ${inject.body || ''}
         await execa.shell(cmd)
       } else if (numFrames === 1) {
         const ff = process.env.FFMPEG_PATH || 'ffmpeg'
+        const palette_file = path.join(tempDir, '/palette.png')
         // 1st generate palette
         // ffmpeg -i imgs/rankun203*.png -vf 'palettegen' palette.png
-        await execa.shell([ff, '-i', framesSoftOutput, '-vf', 'palettegen', path.join(tempDir, '/palette.png')].join(' '))
+        const cmd_generate_palette = [
+          ff,
+          '-i',
+          tempOutput,
+          '-vf',
+          'palettegen',
+          palette_file
+        ].join(' ')
+        !quiet && console.log('cmd_generate_palette', cmd_generate_palette)
+        await execa.shell(cmd_generate_palette)
+
         // ffmpeg -i imgs/rankun203*.png -i palette.png -lavfi 'paletteuse=dither=bayer' output.gif
-        await execa.shell([ ff, '-i', framesSoftOutput, '-i', path.join(tempDir, '/palette.png'), `"${output}"`, ].join(' '))
+        const cmd_generate_gif = [
+          ff,
+          '-i',
+          framesSoftOutput,
+          '-i',
+          palette_file,
+          '-lavfi',
+          'paletteuse=dither=bayer',
+          output
+        ].join(' ')
+        !quiet && console.log('cmd_generate_gif', cmd_generate_gif)
+        await execa.shell(cmd_generate_gif)
       } else {
         const msg = 'Failed to generate GIF, numFrames=' + numFrames
         spinnerG.fail(msg)
@@ -486,6 +520,25 @@ ${inject.body || ''}
 
       if (spinnerG) {
         spinnerG.succeed()
+      }
+    } else {
+      if (tempOutput !== output) {
+        const cmd_conversion = [
+          process.env.FFMPEG_PATH || 'ffmpeg',
+          '-i',
+          tempOutput,
+          output
+        ].join(' ')
+        // just do a file conversion
+        !quiet && console.log('cmd_conversion', cmd_conversion)
+        await execa.shell(cmd_conversion)
+      } else {
+        !quiet &&
+          console.log(
+            'nothing to convert, tempOutput === output',
+            tempOutput,
+            output
+          )
       }
     }
     // Inside page, try ended
@@ -496,6 +549,7 @@ ${inject.body || ''}
   }
 
   if (tempDir) {
+    !quiet && console.log('index.js tempDir removed', tempDir)
     await fs.remove(tempDir)
   }
 
