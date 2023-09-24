@@ -349,7 +349,7 @@ ${inject.body || ''}
           '-pix_fmt',
           'yuv420p',
           '-an',
-          output
+          `"${output}"`
         ]
 
         console.log(ffmpegArgs.join(' '))
@@ -454,22 +454,35 @@ ${inject.body || ''}
         ].join(' ')
       )
 
-      const params = [
-        '-o',
-        escapePath(output),
-        '--fps',
-        gifskiOptions.fps || targetFps,
-        gifskiOptions.fast && '--fast',
-        '--quality',
-        gifskiOptions.quality,
-        '--quiet',
-        escapePath(framesSoftOutputAsInput)
-      ].filter(Boolean)
+      if (numFrames > 1) {
+        const params = [
+          '-o',
+          `"${output}"`,
+          '--fps',
+          gifskiOptions.fps || targetFps,
+          gifskiOptions.fast && '--fast',
+          '--quality',
+          gifskiOptions.quality,
+          '--quiet',
+          escapePath(framesSoftOutputAsInput)
+        ].filter(Boolean)
 
-      const executable = process.env.GIFSKI_PATH || 'gifski'
-      const cmd = [executable].concat(params).join(' ')
+        const executable = process.env.GIFSKI_PATH || 'gifski'
+        const cmd = [executable].concat(params).join(' ')
 
-      await execa.shell(cmd)
+        await execa.shell(cmd)
+      } else if (numFrames === 1) {
+        const ff = process.env.FFMPEG_PATH || 'ffmpeg'
+        // 1st generate palette
+        // ffmpeg -i imgs/rankun203*.png -vf 'palettegen' palette.png
+        await execa.shell([ff, '-i', framesSoftOutput, '-vf', 'palettegen', path.join(tempDir, '/palette.png')].join(' '))
+        // ffmpeg -i imgs/rankun203*.png -i palette.png -lavfi 'paletteuse=dither=bayer' output.gif
+        await execa.shell([ ff, '-i', framesSoftOutput, '-i', path.join(tempDir, '/palette.png'), `"${output}"`, ].join(' '))
+      } else {
+        const msg = 'Failed to generate GIF, numFrames=' = numFrames
+        spinnerG.fail(msg)
+        throw new Error(msg)
+      }
 
       if (spinnerG) {
         spinnerG.succeed()
