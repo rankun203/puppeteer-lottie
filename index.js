@@ -433,6 +433,9 @@ ${inject.body || ''}
       const spinnerG =
         !quiet && ora(`Generating GIF with Gifski / ffmpeg`).start()
 
+      // Ensure all file writes are complete before processing
+      await new Promise((resolve) => setTimeout(resolve, 100))
+
       const framePattern = tempOutput.replace('%012d', '*')
       const escapePath = (arg) => arg.replace(/(\s+)/g, '\\$1')
 
@@ -442,6 +445,20 @@ ${inject.body || ''}
         'frame-soft-'
       )
       const isSingle = numFrames === 1
+
+      // Verify frames exist before processing
+      const frameFiles = await fs.readdir(tempDir)
+      const pngFrames = frameFiles.filter(
+        (f) => f.startsWith('frame-') && f.endsWith('.png')
+      )
+
+      if (pngFrames.length === 0) {
+        throw new Error(
+          `No frames found in ${tempDir}. Expected pattern: frame-*.png`
+        )
+      }
+
+      !quiet && console.log(`Found ${pngFrames.length} frames to process`)
 
       // convert: soften edges by removing semi-transparent pixels that's too transparent < 80% opaque
       await execa.shell(
